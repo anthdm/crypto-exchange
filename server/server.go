@@ -57,9 +57,10 @@ type (
 	}
 
 	MatchedOrder struct {
-		Price float64
-		Size  float64
-		ID    int64
+		UserID int64
+		Price  float64
+		Size   float64
+		ID     int64
 	}
 )
 
@@ -112,6 +113,7 @@ func StartServer() {
 
 	e.POST("/order", ex.handlePlaceOrder)
 
+	e.GET("/order/:userID", ex.handleGetOrders)
 	e.GET("/book/:market", ex.handleGetBook)
 	e.GET("/book/:market/bid", ex.handleGetBestBid)
 	e.GET("/book/:market/ask", ex.handleGetBestAsk)
@@ -143,9 +145,10 @@ func httpErrorHandler(err error, c echo.Context) {
 }
 
 type Exchange struct {
-	Client     *ethclient.Client
-	Users      map[int64]*User
-	orders     map[int64]int64
+	Client *ethclient.Client
+	Users  map[int64]*User
+	// Orders maps a user to his orders.
+	Orders     map[int64][]*orderbook.Order
 	PrivateKey *ecdsa.PrivateKey
 	orderbooks map[Market]*orderbook.Orderbook
 }
@@ -162,10 +165,38 @@ func NewExchange(privateKey string, client *ethclient.Client) (*Exchange, error)
 	return &Exchange{
 		Client:     client,
 		Users:      make(map[int64]*User),
-		orders:     make(map[int64]int64),
+		Orders:     make(map[int64][]*orderbook.Order),
 		PrivateKey: pk,
 		orderbooks: orderbooks,
 	}, nil
+}
+
+func (ex *Exchange) handleGetOrders(c echo.Context) error {
+	userIDStr := c.Param("userID")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		return err
+	}
+
+	orderbookOrders := ex.Orders[int64(userID)]
+
+	fmt.Printf("%+v", orderbookOrders)
+
+	orders := make([]Order, len(orderbookOrders))
+
+	for i := 0; i < len(orderbookOrders); i++ {
+		order := Order{
+			ID:     orderbookOrders[i].ID,
+			UserID: orderbookOrders[i].UserID,
+			// Price:     orderbookOrders[i].Limit.Price,
+			Size:      orderbookOrders[i].Size,
+			Timestamp: orderbookOrders[i].Timestamp,
+			Bid:       orderbookOrders[i].Bid,
+		}
+		orders[i] = order
+	}
+
+	return c.JSON(http.StatusOK, orders)
 }
 
 func (ex *Exchange) handleGetBook(c echo.Context) error {
@@ -277,14 +308,17 @@ func (ex *Exchange) handlePlaceMarketOrder(market Market, order *orderbook.Order
 	sumPrice := 0.0
 	for i := 0; i < len(matchedOrders); i++ {
 		id := matches[i].Bid.ID
+		limitUserID := matches[i].Bid.UserID
 		if isBid {
+			limitUserID = matches[i].Ask.UserID
 			id = matches[i].Ask.ID
 		}
 
 		matchedOrders[i] = &MatchedOrder{
-			ID:    id,
-			Size:  matches[i].SizeFilled,
-			Price: matches[i].Price,
+			UserID: limitUserID,
+			ID:     id,
+			Size:   matches[i].SizeFilled,
+			Price:  matches[i].Price,
 		}
 
 		totalSizeFilled += matches[i].SizeFilled
@@ -301,6 +335,9 @@ func (ex *Exchange) handlePlaceMarketOrder(market Market, order *orderbook.Order
 func (ex *Exchange) handlePlaceLimitOrder(market Market, price float64, order *orderbook.Order) error {
 	ob := ex.orderbooks[market]
 	ob.PlaceLimitOrder(price, order)
+
+	// keep track of the user orders
+	ex.Orders[order.UserID] = append(ex.Orders[order.UserID], order)
 
 	log.Printf("new LIMIT order => type: [%t] | price [%.2f] | size [%.2f]", order.Bid, order.Limit.Price, order.Size)
 
@@ -332,6 +369,35 @@ func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
 		matches, _ := ex.handlePlaceMarketOrder(market, order)
 		if err := ex.handleMatches(matches); err != nil {
 			return err
+		}
+
+		// // Delete the order(s) of the user when filled
+		// for _, matchedOrder := range matchedOrders {
+		// 	userOrders := ex.Orders[matchedOrder.UserID]
+		// 	for i := 0; i < len(userOrders); i++ {
+		// 		if matchedOrder.ID == userOrders[i].ID {
+		// 			// If the size is 0 we can delete this order
+		// 			if userOrders[i].IsFilled() {
+		// 				fmt.Printf("Deleting !!!!!! => %+v\n", userOrders[i])
+		// 				// Delete the order from the slice by shifting -1
+		// 				if matchedOrder.ID == userOrders[i].ID {
+		// 					userOrders[i] = userOrders[len(userOrders)-1]
+		// 					userOrders = userOrders[:len(userOrders)-1]
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		// }
+	}
+
+	// for _, userOrders := range ex.Orders {
+	// for i := 0; i < len(a);  i++ {
+		for i := 0; i < len(userOrders); i++ {
+			if userOrders[i].IsFilled() {
+				fmt.Printf("========> %+v\n", userOrders[i])
+				userOrders[i] = userOrders[len(userOrders)-1]
+				userOrders = userOrders[:len(userOrders)-1]
+			}
 		}
 	}
 

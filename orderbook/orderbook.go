@@ -41,7 +41,7 @@ func NewOrder(bid bool, size float64, userID int64) *Order {
 }
 
 func (o *Order) String() string {
-	return fmt.Sprintf("[size: %.2f]", o.Size)
+	return fmt.Sprintf("[size: %.2f] | [id: %d]", o.Size, o.ID)
 }
 
 func (o *Order) IsFilled() bool {

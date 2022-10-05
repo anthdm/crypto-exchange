@@ -53,6 +53,15 @@ func makeMarketSimpel(c *client.Client) {
 	ticker := time.NewTicker(tick)
 
 	for {
+		orders, err := c.GetOrders(7)
+		if err != nil {
+			log.Println(err)
+		}
+
+		fmt.Println("=---------------------------------------")
+		fmt.Printf("%+v\n", orders)
+		fmt.Println("=---------------------------------------")
+
 		bestAsk, err := c.GetBestAsk()
 		if err != nil {
 			log.Println(err)
