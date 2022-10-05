@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/anthdm/crypto-exchange/orderbook"
 	"github.com/ethereum/go-ethereum/common"
@@ -146,6 +147,7 @@ func httpErrorHandler(err error, c echo.Context) {
 
 type Exchange struct {
 	Client *ethclient.Client
+	mu     sync.RWMutex
 	Users  map[int64]*User
 	// Orders maps a user to his orders.
 	Orders     map[int64][]*orderbook.Order
@@ -171,6 +173,11 @@ func NewExchange(privateKey string, client *ethclient.Client) (*Exchange, error)
 	}, nil
 }
 
+type GetOrdersResponse struct {
+	Asks []Order
+	Bids []Order
+}
+
 func (ex *Exchange) handleGetOrders(c echo.Context) error {
 	userIDStr := c.Param("userID")
 	userID, err := strconv.Atoi(userIDStr)
@@ -178,25 +185,38 @@ func (ex *Exchange) handleGetOrders(c echo.Context) error {
 		return err
 	}
 
+	ex.mu.RLock()
 	orderbookOrders := ex.Orders[int64(userID)]
-
-	fmt.Printf("%+v", orderbookOrders)
-
-	orders := make([]Order, len(orderbookOrders))
+	ordersResp := &GetOrdersResponse{
+		Asks: []Order{},
+		Bids: []Order{},
+	}
 
 	for i := 0; i < len(orderbookOrders); i++ {
+		// It could be that the order is getting filled even though its included in this
+		// response. We must double check if the limit is not nil
+		if orderbookOrders[i].Limit == nil {
+			continue
+		}
+
 		order := Order{
-			ID:     orderbookOrders[i].ID,
-			UserID: orderbookOrders[i].UserID,
-			// Price:     orderbookOrders[i].Limit.Price,
+			ID:        orderbookOrders[i].ID,
+			UserID:    orderbookOrders[i].UserID,
+			Price:     orderbookOrders[i].Limit.Price,
 			Size:      orderbookOrders[i].Size,
 			Timestamp: orderbookOrders[i].Timestamp,
 			Bid:       orderbookOrders[i].Bid,
 		}
-		orders[i] = order
-	}
 
-	return c.JSON(http.StatusOK, orders)
+		if order.Bid {
+			ordersResp.Bids = append(ordersResp.Bids, order)
+		} else {
+			ordersResp.Asks = append(ordersResp.Asks, order)
+		}
+	}
+	ex.mu.RUnlock()
+
+	return c.JSON(http.StatusOK, ordersResp)
 }
 
 func (ex *Exchange) handleGetBook(c echo.Context) error {
@@ -329,6 +349,21 @@ func (ex *Exchange) handlePlaceMarketOrder(market Market, order *orderbook.Order
 
 	log.Printf("filled market order => %d | size: [%.2f] | avgPrice: [%.2f]", order.ID, totalSizeFilled, avgPrice)
 
+	newOrderMap := make(map[int64][]*orderbook.Order)
+
+	ex.mu.Lock()
+	for userID, orderbookOrders := range ex.Orders {
+		for i := 0; i < len(orderbookOrders); i++ {
+			// If the order is not filled we place it in the map copy.
+			// this means that size of the order = 0
+			if !orderbookOrders[i].IsFilled() {
+				newOrderMap[userID] = append(newOrderMap[userID], orderbookOrders[i])
+			}
+		}
+	}
+	ex.Orders = newOrderMap
+	ex.mu.Unlock()
+
 	return matches, matchedOrders
 }
 
@@ -337,7 +372,9 @@ func (ex *Exchange) handlePlaceLimitOrder(market Market, price float64, order *o
 	ob.PlaceLimitOrder(price, order)
 
 	// keep track of the user orders
+	ex.mu.Lock()
 	ex.Orders[order.UserID] = append(ex.Orders[order.UserID], order)
+	ex.mu.Unlock()
 
 	log.Printf("new LIMIT order => type: [%t] | price [%.2f] | size [%.2f]", order.Bid, order.Limit.Price, order.Size)
 
@@ -369,35 +406,6 @@ func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
 		matches, _ := ex.handlePlaceMarketOrder(market, order)
 		if err := ex.handleMatches(matches); err != nil {
 			return err
-		}
-
-		// // Delete the order(s) of the user when filled
-		// for _, matchedOrder := range matchedOrders {
-		// 	userOrders := ex.Orders[matchedOrder.UserID]
-		// 	for i := 0; i < len(userOrders); i++ {
-		// 		if matchedOrder.ID == userOrders[i].ID {
-		// 			// If the size is 0 we can delete this order
-		// 			if userOrders[i].IsFilled() {
-		// 				fmt.Printf("Deleting !!!!!! => %+v\n", userOrders[i])
-		// 				// Delete the order from the slice by shifting -1
-		// 				if matchedOrder.ID == userOrders[i].ID {
-		// 					userOrders[i] = userOrders[len(userOrders)-1]
-		// 					userOrders = userOrders[:len(userOrders)-1]
-		// 				}
-		// 			}
-		// 		}
-		// 	}
-		// }
-	}
-
-	// for _, userOrders := range ex.Orders {
-	// for i := 0; i < len(a);  i++ {
-		for i := 0; i < len(userOrders); i++ {
-			if userOrders[i].IsFilled() {
-				fmt.Printf("========> %+v\n", userOrders[i])
-				userOrders[i] = userOrders[len(userOrders)-1]
-				userOrders = userOrders[:len(userOrders)-1]
-			}
 		}
 	}
 
