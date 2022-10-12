@@ -10,10 +10,6 @@ import (
 	"github.com/anthdm/crypto-exchange/server"
 )
 
-const (
-	maxOrders = 3
-)
-
 var (
 	tick = 2 * time.Second
 )
@@ -22,10 +18,19 @@ func marketOrderPlacer(c *client.Client) {
 	ticker := time.NewTicker(5 * time.Second)
 
 	for {
+		trades, err := c.GetTrades("ETH")
+		if err != nil {
+			panic(err)
+		}
+
+		if len(trades) > 0 {
+			fmt.Printf("exchange price => %.2f\n", trades[len(trades)-1].Price)
+		}
+
 		otherMarketSell := &client.PlaceOrderParams{
 			UserID: 8,
 			Bid:    false,
-			Size:   5000,
+			Size:   1000,
 		}
 		orderResp, err := c.PlaceMarketOrder(otherMarketSell)
 		if err != nil {
@@ -35,7 +40,7 @@ func marketOrderPlacer(c *client.Client) {
 		marketSell := &client.PlaceOrderParams{
 			UserID: 666,
 			Bid:    false,
-			Size:   3000,
+			Size:   100,
 		}
 		orderResp, err = c.PlaceMarketOrder(marketSell)
 		if err != nil {
@@ -45,7 +50,7 @@ func marketOrderPlacer(c *client.Client) {
 		marketBuyOrder := &client.PlaceOrderParams{
 			UserID: 666,
 			Bid:    true,
-			Size:   1000,
+			Size:   100,
 		}
 		orderResp, err = c.PlaceMarketOrder(marketBuyOrder)
 		if err != nil {

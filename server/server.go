@@ -63,6 +63,10 @@ type (
 		Size   float64
 		ID     int64
 	}
+
+	APIError struct {
+		Error string
+	}
 )
 
 func StartServer() {
@@ -114,6 +118,7 @@ func StartServer() {
 
 	e.POST("/order", ex.handlePlaceOrder)
 
+	e.GET("/trades/:market", ex.handleGetTrades)
 	e.GET("/order/:userID", ex.handleGetOrders)
 	e.GET("/book/:market", ex.handleGetBook)
 	e.GET("/book/:market/bid", ex.handleGetBestBid)
@@ -178,6 +183,16 @@ type GetOrdersResponse struct {
 	Bids []Order
 }
 
+func (ex *Exchange) handleGetTrades(c echo.Context) error {
+	market := Market(c.Param("market"))
+	ob, ok := ex.orderbooks[market]
+	if !ok {
+		return c.JSON(http.StatusBadRequest, APIError{Error: "orderbook not found"})
+	}
+
+	return c.JSON(http.StatusOK, ob.Trades)
+}
+
 func (ex *Exchange) handleGetOrders(c echo.Context) error {
 	userIDStr := c.Param("userID")
 	userID, err := strconv.Atoi(userIDStr)
@@ -222,7 +237,6 @@ func (ex *Exchange) handleGetOrders(c echo.Context) error {
 func (ex *Exchange) handleGetBook(c echo.Context) error {
 	market := Market(c.Param("market"))
 	ob, ok := ex.orderbooks[market]
-
 	if !ok {
 		return c.JSON(http.StatusBadRequest, map[string]any{"msg": "market not found"})
 	}
