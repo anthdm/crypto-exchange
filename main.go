@@ -2,152 +2,13 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"math"
 	"time"
 
 	"github.com/anthdm/crypto-exchange/client"
 	"github.com/anthdm/crypto-exchange/server"
 )
 
-var (
-	tick = 2 * time.Second
-)
-
-func marketOrderPlacer(c *client.Client) {
-	ticker := time.NewTicker(5 * time.Second)
-
-	for {
-		trades, err := c.GetTrades("ETH")
-		if err != nil {
-			panic(err)
-		}
-
-		if len(trades) > 0 {
-			fmt.Printf("exchange price => %.2f\n", trades[len(trades)-1].Price)
-		}
-
-		otherMarketSell := &client.PlaceOrderParams{
-			UserID: 8,
-			Bid:    false,
-			Size:   1000,
-		}
-		orderResp, err := c.PlaceMarketOrder(otherMarketSell)
-		if err != nil {
-			log.Println(orderResp.OrderID)
-		}
-
-		marketSell := &client.PlaceOrderParams{
-			UserID: 666,
-			Bid:    false,
-			Size:   100,
-		}
-		orderResp, err = c.PlaceMarketOrder(marketSell)
-		if err != nil {
-			log.Println(orderResp.OrderID)
-		}
-
-		marketBuyOrder := &client.PlaceOrderParams{
-			UserID: 666,
-			Bid:    true,
-			Size:   100,
-		}
-		orderResp, err = c.PlaceMarketOrder(marketBuyOrder)
-		if err != nil {
-			log.Println(orderResp.OrderID)
-		}
-
-		<-ticker.C
-	}
-}
-
-const userID = 7
-
-func makeMarketSimpel(c *client.Client) {
-	ticker := time.NewTicker(tick)
-
-	for {
-		orders, err := c.GetOrders(userID)
-		if err != nil {
-			log.Println(err)
-		}
-
-		bestAsk, err := c.GetBestAsk()
-		if err != nil {
-			log.Println(err)
-		}
-		bestBid, err := c.GetBestBid()
-		if err != nil {
-			log.Println(err)
-		}
-
-		spread := math.Abs(bestBid - bestAsk)
-		fmt.Println("exchange spread", spread)
-
-		// place the bid
-		if len(orders.Bids) < 3 {
-			bidLimit := &client.PlaceOrderParams{
-				UserID: 7,
-				Bid:    true,
-				Price:  bestBid + 100,
-				Size:   1000,
-			}
-
-			bidOrderResp, err := c.PlaceLimitOrder(bidLimit)
-			if err != nil {
-				log.Println(bidOrderResp.OrderID)
-			}
-		}
-
-		// place the ask
-		if len(orders.Asks) < 3 {
-			askLimit := &client.PlaceOrderParams{
-				UserID: 7,
-				Bid:    false,
-				Price:  bestAsk - 100,
-				Size:   1000,
-			}
-
-			askOrderResp, err := c.PlaceLimitOrder(askLimit)
-			if err != nil {
-				log.Println(askOrderResp.OrderID)
-			}
-		}
-
-		fmt.Println("best ask price", bestAsk)
-		fmt.Println("best bid price", bestBid)
-
-		<-ticker.C
-	}
-}
-
-func seedMarket(c *client.Client) error {
-	ask := &client.PlaceOrderParams{
-		UserID: 8,
-		Bid:    false,
-		Price:  10_000,
-		Size:   1_0000,
-	}
-
-	bid := &client.PlaceOrderParams{
-		UserID: 8,
-		Bid:    true,
-		Price:  9_000,
-		Size:   1_0000,
-	}
-
-	_, err := c.PlaceLimitOrder(ask)
-	if err != nil {
-		return err
-	}
-
-	_, err = c.PlaceLimitOrder(bid)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
+const ethPrice = 1281.0
 
 func main() {
 	go server.StartServer()
@@ -156,15 +17,92 @@ func main() {
 
 	c := client.NewClient()
 
-	if err := seedMarket(c); err != nil {
+	go makeMarketSimple(c)
+	time.Sleep(2 * time.Second)
+
+	go marketOrderPlacer(c)
+
+	select {}
+}
+
+func marketOrderPlacer(c *client.Client) {
+	ticker := time.NewTicker(1 * time.Second)
+	for {
+		buyOrder := client.PlaceOrderParams{
+			UserID: 7,
+			Bid:    true,
+			Size:   1,
+		}
+
+		_, err := c.PlaceMarketOrder(&buyOrder)
+		if err != nil {
+			panic(err)
+		}
+
+		sellOrder := client.PlaceOrderParams{
+			UserID: 7,
+			Bid:    false,
+			Size:   1,
+		}
+
+		_, err = c.PlaceMarketOrder(&sellOrder)
+		if err != nil {
+			panic(err)
+		}
+
+		<-ticker.C
+	}
+}
+
+func seedMarket(c *client.Client) {
+	currentPrice := ethPrice // asyns call to fetch the price
+	priceOffset := 100.0
+
+	bidOrder := client.PlaceOrderParams{
+		UserID: 8,
+		Bid:    true,
+		Price:  currentPrice - priceOffset,
+		Size:   10,
+	}
+
+	_, err := c.PlaceLimitOrder(&bidOrder)
+	if err != nil {
 		panic(err)
 	}
 
-	go makeMarketSimpel(c)
+	askOrder := client.PlaceOrderParams{
+		UserID: 8,
+		Bid:    false,
+		Price:  currentPrice + priceOffset,
+		Size:   10,
+	}
 
-	time.Sleep(1 * time.Second)
+	_, err = c.PlaceLimitOrder(&askOrder)
+	if err != nil {
+		panic(err)
+	}
+}
 
-	marketOrderPlacer(c)
+func makeMarketSimple(c *client.Client) {
+	ticker := time.NewTicker(1 * time.Second)
+	for {
+		bestAsk, err := c.GetBestAsk()
+		if err != nil {
+			panic(err)
+		}
+		bestBid, err := c.GetBestBid()
+		if err != nil {
+			panic(err)
+		}
 
-	select {}
+		if bestAsk == 0 && bestBid == 0 {
+			seedMarket(c)
+			continue
+		}
+
+		fmt.Println("best Ask", bestAsk)
+		fmt.Println("best bid", bestBid)
+
+		<-ticker.C
+	}
 }
