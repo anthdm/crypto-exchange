@@ -1,6 +1,7 @@
 package mm
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/anthdm/crypto-exchange/client"
@@ -63,7 +64,10 @@ func (mm *MarketMaker) makerLoop() {
 			break
 		}
 
-		if bestAsk == 0 && bestBid == 0 {
+		fmt.Printf("best ask => %+v\n", bestAsk)
+		fmt.Printf("best bid => %+v\n", bestBid)
+
+		if bestAsk.Price == 0 && bestBid.Price == 0 {
 			if err := mm.seedMarket(); err != nil {
 				logrus.Error(err)
 				break

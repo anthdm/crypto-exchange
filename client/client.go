@@ -103,44 +103,44 @@ func (c *Client) PlaceMarketOrder(p *PlaceOrderParams) (*server.PlaceOrderRespon
 	return placeOrderResponse, nil
 }
 
-func (c *Client) GetBestAsk() (float64, error) {
+func (c *Client) GetBestAsk() (*server.Order, error) {
 	e := fmt.Sprintf("%s/book/ETH/ask", Endpoint)
 	req, err := http.NewRequest(http.MethodGet, e, nil)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	priceResp := &server.PriceResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(priceResp); err != nil {
-		return 0, err
+	order := &server.Order{}
+	if err := json.NewDecoder(resp.Body).Decode(order); err != nil {
+		return nil, err
 	}
 
-	return priceResp.Price, err
+	return order, err
 }
 
-func (c *Client) GetBestBid() (float64, error) {
+func (c *Client) GetBestBid() (*server.Order, error) {
 	e := fmt.Sprintf("%s/book/ETH/bid", Endpoint)
 	req, err := http.NewRequest(http.MethodGet, e, nil)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	priceResp := &server.PriceResponse{}
-	if err := json.NewDecoder(resp.Body).Decode(priceResp); err != nil {
-		return 0, err
+	order := &server.Order{}
+	if err := json.NewDecoder(resp.Body).Decode(order); err != nil {
+		return nil, err
 	}
 
-	return priceResp.Price, err
+	return order, err
 }
 
 func (c *Client) CancelOrder(orderID int64) error {

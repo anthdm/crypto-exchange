@@ -268,36 +268,40 @@ func (ex *Exchange) handleGetBestBid(c echo.Context) error {
 	var (
 		market = Market(c.Param("market"))
 		ob     = ex.orderbooks[market]
-		pr     = PriceResponse{
-			Price: 0.0,
-		}
+		order  = Order{}
 	)
 
 	if len(ob.Bids()) == 0 {
-		return c.JSON(http.StatusOK, pr)
+		return c.JSON(http.StatusOK, order)
 	}
 
-	pr.Price = ob.Bids()[0].Price
+	bestLimit := ob.Bids()[0]
+	bestOrder := bestLimit.Orders[0]
 
-	return c.JSON(http.StatusOK, pr)
+	order.Price = bestLimit.Price
+	order.UserID = bestOrder.UserID
+
+	return c.JSON(http.StatusOK, order)
 }
 
 func (ex *Exchange) handleGetBestAsk(c echo.Context) error {
 	var (
 		market = Market(c.Param("market"))
 		ob     = ex.orderbooks[market]
-		pr     = PriceResponse{
-			Price: 0.0,
-		}
+		order  = Order{}
 	)
 
 	if len(ob.Asks()) == 0 {
-		return c.JSON(http.StatusOK, pr)
+		return c.JSON(http.StatusOK, order)
 	}
 
-	pr.Price = ob.Asks()[0].Price
+	bestLimit := ob.Asks()[0]
+	bestOrder := bestLimit.Orders[0]
 
-	return c.JSON(http.StatusOK, pr)
+	order.Price = bestLimit.Price
+	order.UserID = bestOrder.UserID
+
+	return c.JSON(http.StatusOK, order)
 }
 
 func (ex *Exchange) cancelOrder(c echo.Context) error {
