@@ -196,6 +196,9 @@ func NewOrderbook() *Orderbook {
 }
 
 func (ob *Orderbook) PlaceMarketOrder(o *Order) []Match {
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
+
 	matches := []Match{}
 
 	if o.Bid {
