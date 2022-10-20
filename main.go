@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/rand"
 	"time"
 
 	"github.com/anthdm/crypto-exchange/client"
@@ -17,10 +18,11 @@ func main() {
 	cfg := mm.Config{
 		UserID:         8,
 		OrderSize:      10,
-		MinSpread:      100,
+		MinSpread:      20,
 		MakeInterval:   1 * time.Second,
-		SeedOffset:     400,
+		SeedOffset:     40,
 		ExchangeClient: c,
+		PriceOffset:    10,
 	}
 	maker := mm.NewMakerMaker(cfg)
 
@@ -33,26 +35,22 @@ func main() {
 }
 
 func marketOrderPlacer(c *client.Client) {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
+
 	for {
-		buyOrder := client.PlaceOrderParams{
+		randint := rand.Intn(10)
+		bid := true
+		if randint < 7 {
+			bid = false
+		}
+
+		order := client.PlaceOrderParams{
 			UserID: 7,
-			Bid:    true,
+			Bid:    bid,
 			Size:   1,
 		}
 
-		_, err := c.PlaceMarketOrder(&buyOrder)
-		if err != nil {
-			panic(err)
-		}
-
-		sellOrder := client.PlaceOrderParams{
-			UserID: 7,
-			Bid:    false,
-			Size:   1,
-		}
-
-		_, err = c.PlaceMarketOrder(&sellOrder)
+		_, err := c.PlaceMarketOrder(&order)
 		if err != nil {
 			panic(err)
 		}
